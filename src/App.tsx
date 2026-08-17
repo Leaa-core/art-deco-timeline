@@ -20,13 +20,18 @@ gsap.registerPlugin(ScrollTrigger)
 
 function ArtifactModal({ artifact, onClose, onSelect }: { artifact: Artifact; onClose: () => void; onSelect: (id: string) => void }) {
   const [zoomed, setZoomed] = useState(false)
+  const [imageIndex, setImageIndex] = useState(0)
   const closeRef = useRef<HTMLButtonElement>(null)
   const index = artifacts.findIndex(({ id }) => id === artifact.id)
   const previous = artifacts[(index + artifacts.length - 1) % artifacts.length]
   const next = artifacts[(index + 1) % artifacts.length]
+  const images = [{ src: artifact.image, title: artifact.title, credit: artifact.credit, sourceUrl: artifact.sourceUrl }, ...artifact.gallery]
+  const activeImage = images[Math.min(imageIndex, images.length - 1)]
 
   useEffect(() => {
     document.body.style.overflow = 'hidden'
+    setImageIndex(0)
+    setZoomed(false)
     closeRef.current?.focus()
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
@@ -54,10 +59,13 @@ function ArtifactModal({ artifact, onClose, onSelect }: { artifact: Artifact; on
         <button ref={closeRef} className="modal-close" type="button" onClick={onClose} aria-label="Close artifact details">×</button>
         <div className="modal-art">
           <button className={`art-zoom ${zoomed ? 'is-zoomed' : ''}`} type="button" onClick={() => setZoomed(!zoomed)} aria-label={zoomed ? 'Zoom out of artifact' : 'Zoom into artifact'}>
-            <img src={artifact.image} alt={`${artifact.title}, ${artifact.year}`} />
+            <img src={activeImage.src} alt={`${activeImage.title}, ${artifact.year}`} />
             <span>{zoomed ? '− Zoom out' : '+ Inspect detail'}</span>
           </button>
-          <p className="art-credit">{artifact.credit}</p>
+          <p className="art-credit">{activeImage.credit}</p>
+          <div className="gallery-switcher" aria-label="Artifact image gallery">
+            {images.map((image, imagePosition) => <button key={image.src} className={imagePosition === imageIndex ? 'active' : ''} type="button" onClick={() => { setImageIndex(imagePosition); setZoomed(false) }} aria-label={`View ${image.title}`}><img src={image.src} alt="" /></button>)}
+          </div>
         </div>
         <div className="modal-copy">
           <p className="eyebrow" style={{ color: artifact.accent }}>{artifact.era} <span>·</span> {artifact.year}</p>
@@ -73,7 +81,7 @@ function ArtifactModal({ artifact, onClose, onSelect }: { artifact: Artifact; on
             <article><span>02</span><div><h3>Look closer</h3><p>{artifact.looking}</p></div></article>
             <article><span>03</span><div><h3>Lasting legacy</h3><p>{artifact.legacy}</p></div></article>
           </div>
-          <a className="source-link" href={artifact.sourceUrl} target="_blank" rel="noreferrer">View source & credit <Arrow /></a>
+          <a className="source-link" href={activeImage.sourceUrl} target="_blank" rel="noreferrer">View source & credit <Arrow /></a>
           <nav className="modal-nav" aria-label="Browse artifacts">
             <button type="button" onClick={() => onSelect(previous.id)}><Arrow direction="left" /><span><small>Previous</small>{previous.title}</span></button>
             <button type="button" onClick={() => onSelect(next.id)}><span><small>Next</small>{next.title}</span><Arrow /></button>
@@ -89,6 +97,7 @@ function ArtifactChapter({ artifact, index, onSelect }: { artifact: Artifact; in
 
   return (
     <article data-artifact id={`artifact-${artifact.id}`} data-index={index} className={`timeline-item era-${artifact.theme} ${index % 2 ? 'reverse' : ''}`}>
+      <div className="period-print" aria-hidden="true" style={{ backgroundImage: `url(${artifact.gallery[0].src})` }} />
       <div className="scene-aura" aria-hidden="true" />
       <p className="era-watermark" aria-hidden="true">{artifact.era.split(' ')[0]}</p>
       <div className="item-marker"><span>{String(index + 1).padStart(2, '0')}</span><i style={{ background: artifact.accent }} /></div>
@@ -102,6 +111,7 @@ function ArtifactChapter({ artifact, index, onSelect }: { artifact: Artifact; in
           <img src={artifact.companionImage} alt={artifact.companionAlt} loading="lazy" />
           <span>Collection view</span>
         </button>}
+        {artifact.gallery.length > 1 && <button className="gallery-stamp" type="button" onClick={() => onSelect(artifact.id)} aria-label={`Open supporting images for ${artifact.title}`}><img src={artifact.gallery[1].src} alt="" /><span>Archive print</span></button>}
         <button className={`study-point ${insightOpen ? 'is-open' : ''}`} type="button" onClick={() => setInsightOpen(!insightOpen)} aria-expanded={insightOpen}>
           <span>{insightOpen ? '×' : '01'}</span><b>{insightOpen ? 'Close note' : 'Study point'}</b>
         </button>
