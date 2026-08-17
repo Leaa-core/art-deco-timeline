@@ -1,4 +1,4 @@
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { AnimatePresence, motion, useReducedMotion, useScroll, useTransform } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 import { artifacts, type Artifact } from './content'
 
@@ -80,6 +80,46 @@ function ArtifactModal({ artifact, onClose, onSelect }: { artifact: Artifact; on
   )
 }
 
+function ArtifactChapter({ artifact, index, onSelect, reduceMotion }: { artifact: Artifact; index: number; onSelect: (id: string) => void; reduceMotion: boolean | null }) {
+  const chapterRef = useRef<HTMLElement>(null)
+  const [insightOpen, setInsightOpen] = useState(false)
+  const { scrollYProgress } = useScroll({ target: chapterRef, offset: ['start end', 'end start'] })
+  const imageY = useTransform(scrollYProgress, [0, 1], reduceMotion ? [0, 0] : [-45, 45])
+  const auraY = useTransform(scrollYProgress, [0, 1], reduceMotion ? [0, 0] : [70, -70])
+
+  return (
+    <motion.article ref={chapterRef} data-artifact id={`artifact-${artifact.id}`} className={`timeline-item era-${artifact.theme} ${index % 2 ? 'reverse' : ''}`} initial={reduceMotion ? false : { opacity: 0, y: 35 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.18 }} transition={{ duration: 0.65 }}>
+      <motion.div className="scene-aura" style={{ y: auraY }} aria-hidden="true" />
+      <p className="era-watermark" aria-hidden="true">{artifact.era.split(' ')[0]}</p>
+      <div className="item-marker"><span>{String(index + 1).padStart(2, '0')}</span><i style={{ background: artifact.accent }} /></div>
+      <motion.div className="artifact-stage" style={{ y: imageY }}>
+        <button className="artifact-image" type="button" onClick={() => onSelect(artifact.id)} aria-label={`Open ${artifact.title} gallery details`}>
+          <img src={artifact.image} alt={artifact.title} loading={index > 1 ? 'lazy' : 'eager'} style={{ objectPosition: artifact.imagePosition }} />
+          <span className="image-frame" />
+          <span className="image-open">Enter the full gallery <Arrow /></span>
+        </button>
+        {artifact.companionImage && <button className="companion-image" type="button" onClick={() => onSelect(artifact.id)} aria-label={`View ${artifact.companionAlt} in the ${artifact.title} gallery`}>
+          <img src={artifact.companionImage} alt={artifact.companionAlt} loading="lazy" />
+          <span>Collection view</span>
+        </button>}
+        <button className={`study-point ${insightOpen ? 'is-open' : ''}`} type="button" onClick={() => setInsightOpen(!insightOpen)} aria-expanded={insightOpen}>
+          <span>{insightOpen ? '×' : '01'}</span><b>{insightOpen ? 'Close note' : 'Study point'}</b>
+        </button>
+        <AnimatePresence>{insightOpen && <motion.aside className="insight-card" initial={{ opacity: 0, scale: .92, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .92, y: 10 }}><small>LOOK CLOSER</small><p>{artifact.looking}</p></motion.aside>}</AnimatePresence>
+      </motion.div>
+      <div className="item-copy">
+        <p className="eyebrow" style={{ color: artifact.accent }}>{artifact.era}</p>
+        <p className="item-year">{artifact.year}</p>
+        <p className="chapter-line">{artifact.chapter}</p>
+        <h2>{artifact.title}</h2>
+        <p className="item-story">{artifact.story}</p>
+        <div className="item-meta"><span>{artifact.region}</span><span>{artifact.medium}</span></div>
+        <button className="gallery-button" type="button" onClick={() => onSelect(artifact.id)}>Enter the gallery <Arrow /></button>
+      </div>
+    </motion.article>
+  )
+}
+
 function App() {
   const [activeId, setActiveId] = useState(artifacts[0].id)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -125,6 +165,11 @@ function App() {
           <a className="begin-link" href="#timeline"><span>Begin the yatra</span><i>↓</i></a>
         </div>
         <div className="hero-orbit" aria-hidden="true"><span /><span /><span /></div>
+        <div className="hero-gallery" aria-hidden="true">
+          <img src="/images/dancing-girl.jpg" alt="" />
+          <img src="/images/nataraja.jpg" alt="" />
+          <img src="/images/bharat-mata.jpg" alt="" />
+        </div>
         <p className="hero-edition">A DIGITAL EXHIBITION · 2026</p>
       </section>
 
@@ -140,24 +185,7 @@ function App() {
       </aside>
 
       <section className="timeline" ref={timelineRef}>
-        {artifacts.map((artifact, index) => (
-          <motion.article data-artifact id={`artifact-${artifact.id}`} className={`timeline-item ${index % 2 ? 'reverse' : ''}`} key={artifact.id} initial={reduceMotion ? false : { opacity: 0, y: 28 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.22 }} transition={{ duration: 0.6 }}>
-            <div className="item-marker"><span>{String(index + 1).padStart(2, '0')}</span><i style={{ background: artifact.accent }} /></div>
-            <button className="artifact-image" type="button" onClick={() => selectArtifact(artifact.id)} aria-label={`Open ${artifact.title} gallery details`}>
-              <img src={artifact.image} alt={artifact.title} loading={index > 1 ? 'lazy' : 'eager'} style={{ objectPosition: artifact.imagePosition }} />
-              <span className="image-frame" />
-              <span className="image-open">Open artifact <Arrow /></span>
-            </button>
-            <div className="item-copy">
-              <p className="eyebrow" style={{ color: artifact.accent }}>{artifact.era}</p>
-              <p className="item-year">{artifact.year}</p>
-              <h2>{artifact.title}</h2>
-              <p className="item-story">{artifact.story}</p>
-              <div className="item-meta"><span>{artifact.region}</span><span>{artifact.medium}</span></div>
-              <button className="gallery-button" type="button" onClick={() => selectArtifact(artifact.id)}>Enter the gallery <Arrow /></button>
-            </div>
-          </motion.article>
-        ))}
+        {artifacts.map((artifact, index) => <ArtifactChapter key={artifact.id} artifact={artifact} index={index} onSelect={selectArtifact} reduceMotion={reduceMotion} />)}
       </section>
 
       <section className="legacy" aria-labelledby="legacy-title">
