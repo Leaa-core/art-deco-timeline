@@ -1,5 +1,7 @@
-import { AnimatePresence, motion, useReducedMotion, useScroll, useTransform } from 'framer-motion'
-import { useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { gsap } from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { artifacts, type Artifact } from './content'
 
 const Arrow = ({ direction = 'right' }: { direction?: 'left' | 'right' }) => (
@@ -13,6 +15,8 @@ const SoundIcon = ({ playing }: { playing: boolean }) => (
     {!playing && <path d="m16 9 5 6m0-6-5 6" />}
   </svg>
 )
+
+gsap.registerPlugin(ScrollTrigger)
 
 function ArtifactModal({ artifact, onClose, onSelect }: { artifact: Artifact; onClose: () => void; onSelect: (id: string) => void }) {
   const [zoomed, setZoomed] = useState(false)
@@ -80,19 +84,15 @@ function ArtifactModal({ artifact, onClose, onSelect }: { artifact: Artifact; on
   )
 }
 
-function ArtifactChapter({ artifact, index, onSelect, reduceMotion }: { artifact: Artifact; index: number; onSelect: (id: string) => void; reduceMotion: boolean | null }) {
-  const chapterRef = useRef<HTMLElement>(null)
+function ArtifactChapter({ artifact, index, onSelect }: { artifact: Artifact; index: number; onSelect: (id: string) => void }) {
   const [insightOpen, setInsightOpen] = useState(false)
-  const { scrollYProgress } = useScroll({ target: chapterRef, offset: ['start end', 'end start'] })
-  const imageY = useTransform(scrollYProgress, [0, 1], reduceMotion ? [0, 0] : [-45, 45])
-  const auraY = useTransform(scrollYProgress, [0, 1], reduceMotion ? [0, 0] : [70, -70])
 
   return (
-    <motion.article ref={chapterRef} data-artifact id={`artifact-${artifact.id}`} className={`timeline-item era-${artifact.theme} ${index % 2 ? 'reverse' : ''}`} initial={reduceMotion ? false : { opacity: 0, y: 35 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.18 }} transition={{ duration: 0.65 }}>
-      <motion.div className="scene-aura" style={{ y: auraY }} aria-hidden="true" />
+    <article data-artifact id={`artifact-${artifact.id}`} data-index={index} className={`timeline-item era-${artifact.theme} ${index % 2 ? 'reverse' : ''}`}>
+      <div className="scene-aura" aria-hidden="true" />
       <p className="era-watermark" aria-hidden="true">{artifact.era.split(' ')[0]}</p>
       <div className="item-marker"><span>{String(index + 1).padStart(2, '0')}</span><i style={{ background: artifact.accent }} /></div>
-      <motion.div className="artifact-stage" style={{ y: imageY }}>
+      <div className="artifact-stage">
         <button className="artifact-image" type="button" onClick={() => onSelect(artifact.id)} aria-label={`Open ${artifact.title} gallery details`}>
           <img src={artifact.image} alt={artifact.title} loading={index > 1 ? 'lazy' : 'eager'} style={{ objectPosition: artifact.imagePosition }} />
           <span className="image-frame" />
@@ -106,7 +106,7 @@ function ArtifactChapter({ artifact, index, onSelect, reduceMotion }: { artifact
           <span>{insightOpen ? '×' : '01'}</span><b>{insightOpen ? 'Close note' : 'Study point'}</b>
         </button>
         <AnimatePresence>{insightOpen && <motion.aside className="insight-card" initial={{ opacity: 0, scale: .92, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .92, y: 10 }}><small>LOOK CLOSER</small><p>{artifact.looking}</p></motion.aside>}</AnimatePresence>
-      </motion.div>
+      </div>
       <div className="item-copy">
         <p className="eyebrow" style={{ color: artifact.accent }}>{artifact.era}</p>
         <p className="item-year">{artifact.year}</p>
@@ -116,7 +116,7 @@ function ArtifactChapter({ artifact, index, onSelect, reduceMotion }: { artifact
         <div className="item-meta"><span>{artifact.region}</span><span>{artifact.medium}</span></div>
         <button className="gallery-button" type="button" onClick={() => onSelect(artifact.id)}>Enter the gallery <Arrow /></button>
       </div>
-    </motion.article>
+    </article>
   )
 }
 
@@ -126,6 +126,7 @@ function App() {
   const [playing, setPlaying] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
   const timelineRef = useRef<HTMLElement>(null)
+  const horizontalTriggerRef = useRef<ScrollTrigger | null>(null)
   const reduceMotion = useReducedMotion()
   const selected = artifacts.find(({ id }) => id === selectedId) ?? null
 
@@ -139,7 +140,57 @@ function App() {
     return () => observer.disconnect()
   }, [])
 
+  useLayoutEffect(() => {
+    const timeline = timelineRef.current
+    if (!timeline || reduceMotion) return
+    const track = timeline.querySelector<HTMLElement>('.timeline-track')
+    const panels = gsap.utils.toArray<HTMLElement>('.timeline-item', timeline)
+    if (!track || panels.length < 2) return
+
+    const context = gsap.context(() => {
+      const media = gsap.matchMedia()
+      media.add('(min-width: 821px)', () => {
+        const horizontal = gsap.to(track, {
+          x: () => -(track.scrollWidth - window.innerWidth),
+          ease: 'none',
+          scrollTrigger: {
+            trigger: timeline,
+            start: 'top top',
+            end: () => `+=${window.innerWidth * (panels.length - 1)}`,
+            pin: true,
+            scrub: 0.9,
+            snap: { snapTo: 1 / (panels.length - 1), duration: { min: 0.15, max: 0.42 }, ease: 'power2.out' },
+            invalidateOnRefresh: true,
+            onUpdate: (self) => setActiveId(artifacts[Math.round(self.progress * (panels.length - 1))].id),
+          },
+        })
+        horizontalTriggerRef.current = horizontal.scrollTrigger ?? null
+
+        panels.forEach((panel) => {
+          const stage = panel.querySelector<HTMLElement>('.artifact-stage')
+          const copy = panel.querySelector<HTMLElement>('.item-copy')
+          const aura = panel.querySelector<HTMLElement>('.scene-aura')
+          const watermark = panel.querySelector<HTMLElement>('.era-watermark')
+          gsap.fromTo(stage, { y: 65, rotation: -1.5, scale: .94 }, { y: -24, rotation: 0, scale: 1, ease: 'none', scrollTrigger: { trigger: panel, containerAnimation: horizontal, start: 'left 88%', end: 'right 16%', scrub: true } })
+          gsap.fromTo(copy, { y: 95, autoAlpha: .25 }, { y: -15, autoAlpha: 1, ease: 'none', scrollTrigger: { trigger: panel, containerAnimation: horizontal, start: 'left 84%', end: 'right 22%', scrub: true } })
+          gsap.fromTo(aura, { rotation: -28, scale: .7 }, { rotation: 28, scale: 1.18, ease: 'none', scrollTrigger: { trigger: panel, containerAnimation: horizontal, start: 'left 94%', end: 'right 5%', scrub: true } })
+          gsap.fromTo(watermark, { xPercent: -18, autoAlpha: .15 }, { xPercent: 15, autoAlpha: .7, ease: 'none', scrollTrigger: { trigger: panel, containerAnimation: horizontal, start: 'left 95%', end: 'right 5%', scrub: true } })
+        })
+        return () => { horizontalTriggerRef.current = null }
+      })
+      return () => media.revert()
+    }, timeline)
+    return () => context.revert()
+  }, [reduceMotion])
+
   const goTo = (id: string) => {
+    const index = artifacts.findIndex((artifact) => artifact.id === id)
+    const trigger = horizontalTriggerRef.current
+    if (trigger && window.innerWidth > 820) {
+      const destination = trigger.start + ((trigger.end - trigger.start) * index) / (artifacts.length - 1)
+      window.scrollTo({ top: destination, behavior: reduceMotion ? 'auto' : 'smooth' })
+      return
+    }
     document.getElementById(`artifact-${id}`)?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' })
   }
   const toggleAudio = async () => {
@@ -185,7 +236,9 @@ function App() {
       </aside>
 
       <section className="timeline" ref={timelineRef}>
-        {artifacts.map((artifact, index) => <ArtifactChapter key={artifact.id} artifact={artifact} index={index} onSelect={selectArtifact} reduceMotion={reduceMotion} />)}
+        <div className="timeline-track">
+          {artifacts.map((artifact, index) => <ArtifactChapter key={artifact.id} artifact={artifact} index={index} onSelect={selectArtifact} />)}
+        </div>
       </section>
 
       <section className="legacy" aria-labelledby="legacy-title">
